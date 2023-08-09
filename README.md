@@ -3,6 +3,8 @@
 ## Overview
 - RWiener package provides R functions for the Wiener diffusion model.
 - For further Information check:
+  - https://cran.r-project.org/web/packages/RWiener/index.html
+  - https://github.com/cran/RWiener/tree/master
 
 ## 1. Basic Tutorial
 The tutorial begins by setting up the R environment and providing a brief overview of the functions and parameters associated with the diffusion model.
