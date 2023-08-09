@@ -51,8 +51,9 @@ The tutorial provides a comprehensive pipeline for analyzing the data:
 - Pipeline Part 4: Modeled and real data are compared.
 - Mean Parameters of Model vs. Real Data: The tutorial concludes by plotting the mean parameters of the model against the real data.
 
+
 ---
----
+
 
 ## 2. Advanced Tutorial
 
