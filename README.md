@@ -50,3 +50,49 @@ The tutorial provides a comprehensive pipeline for analyzing the data:
 - Pipeline Part 3: Modeled data is generated.
 - Pipeline Part 4: Modeled and real data are compared.
 - Mean Parameters of Model vs. Real Data: The tutorial concludes by plotting the mean parameters of the model against the real data.
+
+---
+---
+
+## 2. Advanced Tutorial
+
+This tutorial, titled "ADVANCED_Tutorial", provides a comprehensive guide on advanced data analysis using the Drift Diffusion Model (DDM) in R. The tutorial is structured as follows:
+
+### Checks:
+
+- __Sanity Check:__ Ensures that optimization routines meet a predefined criterion for convergence. It also checks that certain parameters (like Non-decision time and boundary separation) adhere to logical constraints.
+- __Predictive Check:__ Validates the model by using parameter estimates to generate simulated datasets. The simulated data should resemble key features of the empirical data.
+- __Parameter Recovery Study:__ After simulating data, the DDM is applied to see if the original parameters can be recovered.
+
+### 2.1 Creating the Data
+- Simulated data is generated for two groups (A and B) for multiple participants.
+- Helper functions are defined to convert milliseconds to seconds and compute deleted trials.
+- Results for deleted trials are printed.
+
+### 2.2 RT-Distributions:
+
+- Reaction time distributions are plotted for different conditions and groups.
+
+### 2.4 DDM Fit:
+- The data is preprocessed.
+- The DDM is fit to the data for each participant.
+- Results, including model coefficients and information criteria, are saved and printed.
+
+### 2.5 Majority Vote for BIC, AIC, and Likelihood Ratio Test:
+
+- The tutorial calculates the differences in BIC and AIC between the simple and complex models for each participant.
+- Based on these differences, a majority vote is taken to decide the preferred model.
+
+### 2.6 Plot the Data:
+
+- The tutorial plots the beta and delta parameters for each reward type.
+
+### 2.7 Statistics for the Group Levels:
+
+- Paired t-tests are conducted for beta (bias) and delta (drift rate) between group levels.
+
+### 2.8 Sanity Check:
+
+- Real data and modeled data for each participant are plotted to visually inspect the fit of the simple model.
+- Key features of the real and modeled data are compared.
+- A parameter recovery study is conducted to see if the original parameters can be recovered from the simulated data.
