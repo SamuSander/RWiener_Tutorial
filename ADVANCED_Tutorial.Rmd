@@ -1,0 +1,785 @@
+---
+title: "ADVANCED_Tutorial"
+output: html_document
+date: '2023-08-09'
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+### Imports
+
+```{r}
+# installs
+#install.packages("dplyr")
+
+# imports
+library(RWiener)
+library(tidyverse)
+library(patchwork)
+library(jtools)
+library(gridExtra)
+library(rempsyc)
+library(effectsize)
+library(lmerTest)
+library(broom.mixed)
+```
+
+------------------------------------------------------------------------
+
+# Advanced Tutorial
+
+------------------------------------------------------------------------
+
+-   **CHECKS**
+
+    -   **Sanity Check:**
+
+        -   For MLE methods, optimization routines also usually report
+            whether a predefined criterion for convergence has been met
+            for each file --\>
+        -   Non-decision time (Tau) can't be lower than the empirically
+            observed behavioral Reaction Time (RT), and boundary
+            separation (alpha) can't be less than 0.
+
+    -   **Predictive Check:**
+
+        -   A next important step to establish model validity is a
+            predictive check, in which the parameter estimates obtained
+            from the empirical data are used to generate simulated
+            datasets.
+        -   The simulated data should mimic key features of the
+            behavioral-data: mean/SD percent accuracy and median RT in
+            the simulated vs. empirical data.
+
+    -   **Parameter Recovery Study:**
+
+        -   After generating the simulated data, a parameter recovery
+            study can be conducted, in which the DDM is applied to the
+            simulated data, to see whether the parameter values which
+            generated those simulated data can be correctly recovered by
+            the DDM
+        -   In a perfect world, the parameter values estimated from the
+            simulated data will match the generating parameters quite
+            closely: high correlation (Pearson's r) between generating
+            and recovered parameters is considered "good" if r \> 0.75
+            or "excellent" ifr \> 0.90
+
+## Creating the data
+
+```{r}
+# Set seed and initialize parameters
+set.seed(0)
+n_subs <- 100
+n_trials <- 100
+all_data <- vector("list", n_subs)
+
+# Generate data
+for (i_sub in 1:n_subs) {
+  group_A <- data.frame(
+    participant_id = i_sub,
+    dat = rwiener(n_trials, 2, .3, .5, 0),
+    grp = factor(rep("A", n_trials), levels = c("A", "B"))
+  )
+  
+  group_B <- data.frame(
+    participant_id = i_sub,
+    dat = rwiener(n_trials, 2, .3, .5, 1),
+    grp = factor(rep("B", n_trials), levels = c("A", "B"))
+  )
+  
+  all_data[[i_sub]] <- rbind(group_A, group_B)
+}
+all_data <- do.call(rbind, all_data)
+
+# Helper functions
+ms_to_s <- function(data, column_name) {
+  data[[column_name]] <- data[[column_name]] / 1000
+  return(data)
+}
+
+compute_deleted_trials <- function(data, rt_low, rt_high) {
+  filtered_data <- data %>% filter(dat.q >= rt_low, dat.q <= rt_high)
+  
+  trials_data <- filtered_data %>% 
+    group_by(participant_id) %>% 
+    summarise(n_trials = n())
+  
+  total_trials_data <- data %>% 
+    group_by(participant_id) %>% 
+    summarise(total_trials = n())
+  
+  trials_data <- left_join(trials_data, total_trials_data, by = "participant_id")
+  trials_data$deleted_trials <- trials_data$total_trials - trials_data$n_trials
+  
+  return(trials_data)
+}
+
+# Analysis
+all_data_2seconds_trials <- compute_deleted_trials(all_data, .150, 2.0)
+all_data_5seconds_trials <- compute_deleted_trials(all_data, .150, 5.0)
+
+# Print results
+print(paste("Median deleted trials (2 seconds):", median(all_data_2seconds_trials$deleted_trials)))
+print(paste("Median deleted trials (5 seconds):", median(all_data_5seconds_trials$deleted_trials)))
+```
+
+## RT-Distributions
+
+```{r}
+# Filter the data based on the reaction time window
+all_data <- all_data %>% filter(dat.q >= .150, dat.q <= 5.0)
+
+# Split the data into different conditions based on assumptions
+lure_rewardA_df    = all_data %>% filter(dat.resp == "lower", grp == "A")
+lure_rewardB_df    = all_data %>% filter(dat.resp == "lower", grp == "B")
+target_rewardA_df  = all_data %>% filter(dat.resp == "upper", grp == "A")
+target_rewardB_df  = all_data %>% filter(dat.resp == "upper", grp == "B")
+
+# Plot densities for the given reaction time window
+# Response Lure/ Group A
+ggplot(lure_rewardA_df, aes(x=dat.q)) +
+  geom_density(fill="#0073C2FF", alpha=0.9) +
+  labs(title="Density of Reaction Times for Response Lure/ Group A", 
+       x = "Reaction Time",
+       y = "Density") +
+  theme_apa() +
+  xlim(0,5)
+
+# Response Lure/ Group B
+ggplot(lure_rewardB_df, aes(x=dat.q)) +
+  geom_density(fill="#950000FF", alpha=0.9) +
+  labs(title="Density of Reaction Times for Response Lure/ Group B", 
+       x = "Reaction Time",
+       y = "Density") +
+  theme_apa() +
+  xlim(0,5)
+
+# Response Target/ Group A
+ggplot(target_rewardA_df, aes(x=dat.q)) +
+  geom_density(fill="#0073C2FF", alpha=0.9) +
+  labs(title="Density of Reaction Times for Response Target/ Group A", 
+       x = "Reaction Time",
+       y = "Density") +
+  theme_apa() +
+  xlim(0,5)
+
+# Response Target/ Group B
+ggplot(target_rewardB_df, aes(x=dat.q)) +
+  geom_density(fill="#950000FF", alpha=0.9) +
+  labs(title="Density of Reaction Times for Response Target/ Group B", 
+       x = "Reaction Time",
+       y = "Density") +
+  theme_apa() +
+  xlim(0,5)
+```
+
+## Parameter estimation
+
+**LLE:** - Some researchers prefer to speak in terms of minimizing
+negative LLE, rather than maximizing positive LLE, but the resulting
+parameter estimates will be the same.) - The higher (more positive), the
+better
+
+**AIC:** **the smaller the AIC, the better** - One of the most commonly
+used is Akaike's Information Criterion (AIC), which is an attempt to
+compare LLE between models while penalizing more complex models
+
+**BIC:** **lower (more negative) is better:** - there are conventions
+for interpreting BIC values (Kass and Raftery, 1995): - difference of
+\<2 --\> complex model is not worth it - difference of \>2 --\> positive
+results in favor of the more complex model - difference of \>6 --\>
+strong evidence for the complex model - difference of \>10 --\> very
+strong evidence for the complex model
+
+**Likelihood ratio test** is a statistical test used to compare the fit
+of two models to some observed data. The test is based on the ratio of
+the likelihoods of the two models:
+
+-   **P_LR_MyCompare** compares the log-likelihoods of two models
+    (complex and simple). The degree of freedom (df) for the chi-square
+    distribution is supplied as a parameter. This function calculates
+    the likelihood ratio (LR) and then uses the chi-square distribution
+    to calculate the p-value (P). This p-value is then returned.
+
+-   **P_LR_test** calculates the absolute value of the difference
+    between two likelihood ratios LR1 and LR2, multiplies it by 2, and
+    then calculates the p-value from the chi-square distribution with
+    the specified degree of freedom. This p-value is then returned.
+
+-   Both functions use the chi-square distribution to calculate the
+    p-value, which is a common practice when conducting likelihood ratio
+    tests. The p-value indicates the probability of obtaining the
+    observed data (or data more extreme) if the null hypothesis is true.
+    In this case, the null hypothesis would be that the simpler model
+    (with fewer parameters) is true. A small p-value (usually, less than
+    0.05) would lead to the rejection of the null hypothesis in favor of
+    the more complex model.
+
+**Majority vote** - All these metrics -- AIC, BIC, DIC, WAIC, BF -- are
+used to compare how well two models describe the same data file(s). As
+discussed earlier, there may be some participants for whom one model has
+a much lower metric than the other model, but some participants where
+the reverse is true. Often, a decision favoring one model or the other
+is based on a simple majority vote: which model results in best metrics
+for a majority of participants. Always, the burden is on the more
+complex model to justify its use, so if the complex model does not
+clearly provide a better fit, then the simpler model would likely
+be preferred.
+
+## Define the comparison functions
+
+-   Absolute Difference between 2 likelihoods LR1 and LR2 and multiplies
+    it by 2 and the calculates the p-value from the chi-square
+-   distribution with the specified dfs
+-   df: The difference in the number of parameters is:
+    nParameters(complex) - nParameters(simple)
+
+```{r}
+# Comparison Function 
+P_LR_test <- function(LR1,LR2,df){
+  LR = abs((LR1-LR2)*2)
+  P = pchisq(LR,df,lower.tail = FALSE)
+  return(P)
+}
+
+# Calculate degrees of freedom based on number of parameters
+calculate_dfs <- function(wdm_cond, wdm_nocond) {
+  return(length(coef(wdm_cond)) - length(coef(wdm_nocond)))
+}
+```
+
+## DDM Fit
+
+```{r}
+# --------------- Preprocess Data  ---------------
+prepare_data <- function(data) {
+  data %>%
+    select(participant_id, dat.q, dat.resp, grp) %>%
+    mutate(
+      dat.resp = case_when(
+        dat.resp == "lower" ~ "lower",
+        dat.resp == "upper" ~ "upper"
+      ),
+      grp = case_when(
+        grp == "A" ~ "A",
+        grp == "B"  ~ "B"
+      ),
+      grp = as.factor(grp)
+    ) %>%
+    rename(rt = dat.q, response = dat.resp, reward = grp)
+}
+
+exp_data <- prepare_data(all_data)
+
+
+# --------------- DDM FIT  ----------------------------------------------------------------
+
+# Define variables that will be used during the fitting procedure
+Snum = 0
+paste("Start DDM fit ")
+Results_ALL = NULL
+Results_ALL_nocond = NULL
+ExcludedSubjs = NULL
+CompareMetrics = NULL
+ICs = NULL
+
+# "START" The Estimation procedure
+for (i in unique(exp_data$participant_id)) {
+  Snum = Snum+1
+  print(paste("Modelfit for participant_id = ",i,
+              '|number', Snum," out of ",length(unique(exp_data$participant_id)), sep=""))
+  
+  # Get the data for a specific participant and delete the participant column to 
+  dat <- exp_data[exp_data$participant_id==i,]   
+  dat <- dat[, -which(names(dat) %in% "participant_id")]
+  
+  print("Wait-------------------->")
+  
+  # --------------- Estimate Model Parameters  -----------------------
+  # change the HYPERPARAMETERS OF THE MODELS
+  # fixed -> number of fixed parameters, not free
+  # (alpha=, tau=, beta=, delta=) --> define the parameters a priori
+  
+  # Simple Model
+  wdm_nocondition <-
+    wdm(
+      dat,
+      yvar = c("rt","response"),
+      xvar=NULL
+      )
+  
+  # Complex Model
+  wdm_condition <-
+    wdm(
+      dat,
+      tau = wdm_nocondition$coefficients[["tau"]],
+      alpha = wdm_nocondition$coefficients[["alpha"]],
+      yvar = c("rt","response"),
+      xvar="reward",
+      fixed = 2
+      )
+
+  # ------------------------------------------------------------------
+  
+  # Define params vectors for the BIC and AIC estimation
+  params_condition_A <- c("alpha","tau","A_delta","A_beta")
+  params_condition_B <- c("alpha","tau","B_delta","B_beta")
+  params_nocondition        <- c("alpha","tau","delta","beta")
+  
+  # Calculate dfs
+  dfs <- calculate_dfs(wdm_condition, wdm_nocondition)
+  
+  # Change ":" to "_" in coefficient names
+  names(wdm_condition$coefficients) <- gsub(":", "_", names(wdm_condition$coefficients))
+  names(wdm_nocondition$coefficients) <- gsub(":", "_", names(wdm_nocondition$coefficients))
+  
+  # Information Criteria estimation: AIC and BIC
+  ### AIC
+  AIC_A = wiener_aic(wdm_condition$coefficients[params_condition_A],
+  data = dat[dat$reward == "A",c("rt","response")])
+  AIC_B = wiener_aic(wdm_condition$coefficients[params_condition_B],
+  data = dat[dat$reward =="B",c("rt","response")])
+  AIC_nocondition = wiener_aic(wdm_nocondition$coefficients[params_nocondition],
+  data = dat[,c("rt","response")])
+  AIC(wdm_nocondition)
+  
+  ### BIC
+  BIC_A = wiener_bic(wdm_condition$coefficients[params_condition_A],
+  data = dat[dat$reward=="A",c("rt","response")])
+  BIC_B = wiener_bic(wdm_condition$coefficients[params_condition_B],
+  data = dat[dat$reward=="B",c("rt","response")])
+  BIC_nocondition = wiener_bic(wdm_nocondition$coefficients[params_nocondition],
+  data = dat[,c("rt","response")])
+  
+  # Save the DDM Coefficients for the DDM (conditions)
+  Temp = c(i,wdm_condition$coefficients)
+  names(Temp) = c("participant_id",names(wdm_condition$coefficients))
+  Results_ALL = rbind(Results_ALL,Temp)
+
+  # Save the DDM Coefficients for the DDM (no_conditions)
+  Temp = c(i,wdm_nocondition$coefficients)
+  names(Temp) = c("participant_id",names(wdm_nocondition$coefficients))
+  Results_ALL_nocond = rbind(Results_ALL_nocond,Temp)
+
+  # Save the Information Criteria
+  Temp = c(i,AIC_A,AIC_B,AIC_nocondition,BIC_A,BIC_B,BIC_nocondition)
+  names(Temp) = c("participant_id","AIC_A","AIC_B","AIC_nocondition","BIC_A","BIC_B","BIC_nocondition")
+  ICs = rbind(ICs,Temp)
+
+  # Save and Compare Metrics
+  Temp = c(i, wdm_condition$convergence, logLik(wdm_condition),  deviance(wdm_condition), AIC(wdm_condition), BIC(wdm_condition),
+              wdm_nocondition$convergence, logLik(wdm_nocondition),deviance(wdm_nocondition),AIC(wdm_nocondition),BIC(wdm_nocondition), P_LR_test(logLik(wdm_condition), logLik(wdm_nocondition), dfs))
+  names(Temp) = c("participant_id","convergence_condition1","convergence_condition2","logLik_condition","deviance_condition","AIC_condition","BIC_condition","convergence_nocondition","logLik_nocondition","deviance_nocondition","AIC_nocondition","BIC_nocondition","LRT_P")
+  CompareMetrics = rbind(CompareMetrics,Temp)
+  
+  print("-------------------->done!")
+}
+# -----------------------------------------------------------------------------------------
+
+# --------------- Dataframe Cleaning ---------------
+
+# Convert various metrics to data frames
+Exp_CompareMetrics     <- as.data.frame(CompareMetrics)
+Exp_Results_ALL        <- as.data.frame(Results_ALL)
+Exp_Results_ALL_nocond <- as.data.frame(Results_ALL_nocond)
+Exp_ICs                <- as.data.frame(ICs)
+
+# --------------- Update Row Names ---------------
+
+# Set sequential row names based on the length of each dataframe
+set_row_names <- function(df) {
+    row.names(df) <- 1:length(df[, 1])
+    return(df)
+}
+
+Exp_Results_ALL        <- set_row_names(Exp_Results_ALL)
+Exp_Results_ALL_nocond <- set_row_names(Exp_Results_ALL_nocond)
+Exp_CompareMetrics     <- set_row_names(Exp_CompareMetrics)
+Exp_ICs                <- set_row_names(Exp_ICs)
+
+# --------------- Data Type Conversion ---------------
+
+# Convert columns (except 'participant_id') of given dataframe to numeric type
+convert_to_numeric <- function(df) {
+    df %>% mutate(across(-participant_id, as.numeric))
+}
+
+Exp_Results_ALL        <- convert_to_numeric(Exp_Results_ALL)
+Exp_Results_ALL_nocond <- convert_to_numeric(Exp_Results_ALL_nocond)
+Exp_CompareMetrics     <- convert_to_numeric(Exp_CompareMetrics)
+Exp_ICs                <- convert_to_numeric(Exp_ICs)
+
+
+# --------------- Show Results ----------------------
+
+summarize(group_by(exp_data,participant_id,reward),n())
+Exp_Results_ALL
+Exp_Results_ALL_nocond
+Exp_ICs
+Exp_CompareMetrics
+```
+
+## Majority Vote for BIC, AIC and Likelihood Ratio Test
+
+```{r}
+## Calculate Differences
+Exp_CompareMetrics$dif_bic <- with(Exp_CompareMetrics, BIC_nocondition - BIC_condition)
+Exp_CompareMetrics$dif_aic <- with(Exp_CompareMetrics, AIC_nocondition - AIC_condition)
+
+## Interpret the BIC differences
+Exp_CompareMetrics$BIC_interpretation <- cut(Exp_CompareMetrics$dif_bic,
+                                             breaks = c(-Inf, 2, 6, 10, Inf),
+                                             labels = c("Complex model not worth it",
+                                                        "Positive evidence for complex model",
+                                                        "Strong evidence for complex model",
+                                                        "Very strong evidence for complex model"),
+                                             right = FALSE)
+
+# Majority vote for BIC
+# A positive difference (dif_bic) indicates that the BIC for the no-condition model is higher 
+# (i.e., worse fit) than the conditioned model
+Exp_CompareMetrics$vote_bic <- ifelse(Exp_CompareMetrics$dif_bic > 0, "Complex Model", "Simple Model")
+
+# Majority vote for AIC
+# A positive difference (dif_aic) indicates that the AIC for the no-condition model is higher 
+# (i.e., worse fit) than the conditioned model
+Exp_CompareMetrics$vote_aic <- ifelse(Exp_CompareMetrics$dif_aic > 0, "Complex Model", "Simple Model")
+
+# Count the votes
+bic_votes <- table(Exp_CompareMetrics$vote_bic)
+aic_votes <- table(Exp_CompareMetrics$vote_aic)
+
+# Decide which model is preferred based on majority vote
+preferred_model_bic <- names(bic_votes)[which.max(bic_votes)]
+preferred_model_aic <- names(aic_votes)[which.max(aic_votes)]
+
+cat("Based on the absolute BIC-difference, the preferred model is:", preferred_model_bic, "\n")
+cat("Based on the absolute AIC-difference, the preferred model is:", preferred_model_aic, "\n")
+
+# BIC & AIC Majority Vote
+bic_simple_majority <- sum(Exp_CompareMetrics$dif_bic < 2)
+bic_complex_majority <- sum(Exp_CompareMetrics$dif_bic > 2)
+
+aic_simple_majority <- sum(Exp_CompareMetrics$dif_aic < 2)
+aic_complex_majority <- sum(Exp_CompareMetrics$dif_aic > 2)
+
+# Interpret the p-values for LRT_P
+Exp_CompareMetrics$LRT_P_interpretation <- ifelse(Exp_CompareMetrics$LRT_P < 0.05,
+                                                "Complex model provides significantly better fit",
+                                                "No significant difference between models")
+
+# Likelihood-Ratio Test (LRT) Majority Vote
+LRT_P_complex_majority <- sum(Exp_CompareMetrics$LRT_P < 0.05)
+
+# Determine overall preference based on BIC & AIC
+if(bic_simple_majority > bic_complex_majority) {
+  bic_overall <- "Simple Model"
+} else {
+  bic_overall <- "Complex Model"
+}
+
+if(aic_simple_majority > aic_complex_majority) {
+  aic_overall <- "Simple Model"
+} else {
+  aic_overall <- "Complex Model"
+}
+
+# Determine overall preference based on LRT
+if(LRT_P_complex_majority > length(Exp_CompareMetrics$LRT_P)/2) {
+  LRT_P_overall <- "Complex Model"
+} else {
+  LRT_P_overall <- "Simple Model"
+}
+
+# Print overall results
+cat(paste("Based on BIC, the overall preferred model is:", bic_overall))
+cat(paste("\nBased on AIC, the overall preferred model is:", aic_overall))
+cat(paste("\nBased on LRT, the overall preferred model is:", LRT_P_overall))
+```
+
+# Plot the data
+
+```{r}
+# Reshape the data to a long format
+Exp_Results_ALL_long <- Exp_Results_ALL %>% subset(select = -c(alpha, tau)) %>% pivot_longer(cols = -participant_id, names_to = "parameter", values_to = "value")
+
+# Separate the parameter into reward and parameter type (beta/delta)
+Exp_Results_ALL_long <- Exp_Results_ALL_long %>%
+  separate(parameter, into = c("reward", "parameter_type"), sep = "_")
+
+# Create a combined violin and jitter plot
+ggplot(Exp_Results_ALL_long, aes(x = reward, y = value, fill = parameter_type)) +
+  geom_violin(alpha = 0.3) +
+  geom_jitter(position = position_jitter(0.2), size = 2, alpha = 0.8, shape = 21, color = "black") +
+  labs(title = "Beta and Delta parameters for each reward",
+       x = "Reward",
+       y = "Parameter value") +
+  theme_apa() +
+  theme(legend.position = "none")+
+  facet_wrap(~ parameter_type, scales = "free")
+```
+
+## Statistics for the group levels
+
+-   paired t-test for beta (bias) between group levels
+-   paired t-test for the delta (drift rate) between group levels
+
+```{r}
+# t-test between group levels
+
+# Beta
+t.test(
+  Exp_Results_ALL$B_beta,
+  Exp_Results_ALL$A_beta,
+  paired = TRUE
+)
+
+cohens_d(
+  Exp_Results_ALL$B_beta,
+  Exp_Results_ALL$A_beta,
+  paired = TRUE
+)
+
+# Delta
+t.test(
+  Exp_Results_ALL$B_delta,
+  Exp_Results_ALL$A_delta,
+  paired = TRUE
+)
+
+cohens_d(
+  Exp_Results_ALL$B_delta,
+  Exp_Results_ALL$A_delta,
+  paired = TRUE
+)
+```
+
+------------------------------------------------------------------------
+
+# Sanity check
+
+------------------------------------------------------------------------
+
+## Plot real data and modeled data for each participant: SIMPLE MODEL
+
+```{r}
+### Initialize an empty list to store the modeled data for each subject
+modeled_data_list <- list()
+
+### For loop to iterate through each subject
+for (i in 1:nrow(Exp_Results_ALL_nocond)) {
+  # Extract parameters for the each subject
+  params <- as.numeric(Exp_Results_ALL_nocond[i, -1])
+  
+  # Count number of trials for the each participant
+  n_trials <- nrow(exp_data[exp_data$participant_id == Exp_Results_ALL_nocond$participant_id[i], ])
+  
+  # Generate modeled data for the each participant using the rwiener function
+  modeled_data <- rwiener(n = n_trials, alpha = params[1], tau = params[2], beta = params[3], delta = params[4])
+  
+  # Create dataframe with the modeled data and subject number
+  modeled_df <- data.frame(participant_id = Exp_Results_ALL_nocond$participant_id[i], q = modeled_data)
+  
+  # Append the dataframe to list
+  modeled_data_list[[i]] <- modeled_df
+}
+
+### Combine the dataframes in the list into a single dataframe
+modeled_data <- do.call(rbind, modeled_data_list)
+
+# Create a group variable and merge them
+modeled_data$group  = "Model"
+
+# Select the columns we need from the exp_data
+real_data <- exp_data %>%  select(participant_id, rt, response)
+real_data$group = "Real"
+
+# To set the column names:
+colnames(modeled_data) <- c("participant_id", "rt", "response", "group")
+
+# Combine the data frames
+total <- rbind(modeled_data, real_data)
+
+create_density_plots <- function(total) {
+  
+  # Get the unique subjects
+  subjects <- unique(total$participant_id)
+  
+  # Create a list to store plots
+  plots <- list()
+  
+  # Loop over each subject
+  for (i in seq_along(subjects)) {
+    
+    # For upper responses
+    p1 <- ggplot(total %>% filter(participant_id == subjects[i] & response == "upper"), aes(x = rt)) +
+              geom_line(aes(color = group), stat = "density", position = "identity", linewidth = 1.5) +
+              labs(x = "RT", y = "Density", title = paste("Participant", subjects[i], "Response (upper=targets)")) +
+              scale_color_manual(values = c("Real" = "blue", "Model" = "red")) +
+              theme_apa() +
+              theme(legend.justification = c(1, 1), legend.position = c(1, 1), plot.title = element_text(hjust = 0.1), legend.box.margin = margin(6, 6, 6, 6), legend.background = element_rect(colour = "black")) +
+              ylim(0,1.5)
+    
+    # For lower responses
+    p2 <- ggplot(total %>% filter(participant_id == subjects[i] & response == "lower"), aes(x = rt)) +
+              geom_line(aes(color = group), stat = "density", position = "identity", linewidth = 1.5) +
+              labs(x = "RT", y = "Density", title = paste("Participant", subjects[i], "Response (lower=lures)")) +
+              scale_color_manual(values = c("Real" = "blue", "Model" = "red")) +
+              theme_apa() +
+              theme(legend.justification = c(1, 1), legend.position = c(1, 1), plot.title = element_text(hjust = 0.1), legend.box.margin = margin(6, 6, 6, 6), legend.background = element_rect(colour = "black")) +
+              ylim(0,1.5)
+    
+    # Print the plots
+    print(p1)
+    print(p2)
+    
+    # Store the plots in the list
+    plots[[paste("Participant", subjects[i], "upper")]] <- p1
+    plots[[paste("Participant", subjects[i], "lower")]] <- p2
+  }
+  
+  return(plots)
+}
+
+create_bar_plots <- function(total) {
+  
+  # Get the unique subjects
+  subjects <- unique(total$participant_id)
+  
+  # Create a list to store plots
+  plots <- list()
+  
+  # Loop over each subject
+  for (i in seq_along(subjects)) {
+    
+    p <- ggplot(total %>% filter(participant_id == subjects[i]), aes(x = response, fill = group)) +
+            geom_bar(position = "dodge") +
+            labs(x = "Response", y = "Count", title = paste("Participant", subjects[i])) +
+            scale_fill_manual(values = c("Real" = "blue", "Model" = "red")) +
+            theme_apa() +
+            theme(legend.justification = c(1, 1), legend.position = c(1, 1), plot.title = element_text(hjust = 0.1), legend.box.margin = margin(6, 6, 6, 6), legend.background = element_rect(colour = "black"))
+    
+    # Print the plot
+    print(p)
+    
+    # Store the plot in the list
+    plots[[paste("Participant", subjects[i])]] <- p
+  }
+  
+  return(plots)
+}
+
+# Use the functions
+plots <- create_density_plots(total)
+plots <- create_bar_plots(total)
+```
+
+## Sanity Check 2
+
+### Key features
+
+```{r}
+# Calculate metrics
+calculate_metrics <- function(data, group){
+  metrics_list <- list()
+  
+  # Unique participant ids
+  participant_ids <- unique(data$participant_id)
+  
+  for(id in participant_ids){
+    # Subset data for each participant
+    participant_data <- data[data$participant_id == id & data$group == group,]
+    
+    # Count 'upper' and 'lower' responses
+    upper_count <- sum(participant_data$response == "upper")
+    lower_count <- sum(participant_data$response == "lower")
+    
+    # Calculate mean and SD
+    mean_rt <- mean(participant_data$rt)
+    sd_rt <- sd(participant_data$rt)
+    
+    # Calculate median
+    median_rt <- median(participant_data$rt)
+    
+    # Append to list
+    metrics_list[[id]] <- data.frame(participant_id = id, upper_count = upper_count, lower_count = lower_count, mean_rt = mean_rt, sd_rt = sd_rt, median_rt = median_rt)
+  }
+  
+  # Combine all metrics into one data frame
+  metrics <- do.call(rbind, metrics_list)
+  
+  return(metrics)
+}
+
+# Calculate metrics for the real data and modeled data
+real_metrics <- calculate_metrics(total, "Real")
+model_metrics <- calculate_metrics(total, "Model")
+
+# Compare the metrics
+comparison <- merge(real_metrics, model_metrics, by = "participant_id", suffixes = c("_real", "_model"))
+
+# Print the comparison
+print(comparison)
+
+# Calculate correlations
+upper_count_corr <- cor(comparison$upper_count_real, comparison$upper_count_model, method = "pearson")
+lower_count_corr <- cor(comparison$lower_count_real, comparison$lower_count_model, method = "pearson")
+mean_rt_corr <- cor(comparison$mean_rt_real, comparison$mean_rt_model, method = "pearson")
+sd_rt_corr <- cor(comparison$sd_rt_real, comparison$sd_rt_model, method = "pearson")
+median_rt_corr <- cor(comparison$median_rt_real, comparison$median_rt_model, method = "pearson")
+
+# Print the correlations between real and modeled data
+cat("Correlation for upper_count:", upper_count_corr, "\n")
+cat("Correlation for lower_count:", lower_count_corr, "\n")
+cat("Correlation for mean_rt:", mean_rt_corr, "\n")
+cat("Correlation for median_rt:", median_rt_corr, "\n")
+cat("Correlation for sd_rt:", sd_rt_corr, "\n")
+```
+
+## Parameter recovery study
+
+-   After generating the simulated data, a parameter recovery study can
+    be conducted, in which the DDM is applied to the simulated data, to
+    see whether the parameter values which generated those simulated
+    data can be correctly recovered by the DDM
+
+```{r}
+# Create a list to store recovery results
+recovery_results <- list()
+
+# Iterate over each participant for parameter recovery
+for (i in 1:nrow(Exp_Results_ALL_nocond)) {
+  print(paste("Processing participant number:", i))
+  # Extract parameters for the participant
+  params <- as.numeric(Exp_Results_ALL_nocond[i, -1])
+  # Count number of trials for the participant
+  n_trials <- nrow(exp_data[exp_data$participant_id == Exp_Results_ALL_nocond$participant_id[i], ])
+  # Generate new data for the participant using the parameters
+  simulated_data <- rwiener(n = n_trials, alpha = params[1], tau = params[2], beta = params[3], delta = params[4])
+  # Run DDM on the new data
+  wdm_simulated <- wdm(simulated_data,yvar = c("q","resp"))
+  # Save the recovered parameters
+  recovery_results[[i]] <- wdm_simulated$coefficients
+}
+
+# Convert list to dataframe
+recovery_results_df <- do.call(rbind, recovery_results)
+recovery_results_df <- data.frame(recovery_results_df)
+
+# Flatten Exp3_Results_ALL_nocond and recovery_results_df to be 1D vectors
+orig_params <- as.numeric(unlist(Exp_Results_ALL_nocond[,-1]))
+recovered_params <- as.numeric(unlist(recovery_results_df))
+
+# Calculate Pearson correlation between original and recovered parameters
+correlation <- cor(orig_params, recovered_params)
+print(paste("Pearson's correlation:", correlation))
+
+# Plot the original vs. the recovered parameters
+ggplot() +
+  geom_point(aes(x = orig_params, y = recovered_params)) +
+  labs(x = "Original Parameters", y = "Recovered Parameters") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  theme_bw()
+
+```
