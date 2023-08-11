@@ -59,12 +59,6 @@ The tutorial provides a comprehensive pipeline for analyzing the data:
 
 This tutorial, titled "ADVANCED_Tutorial", provides a comprehensive guide on advanced data analysis using the Drift Diffusion Model (DDM) in R. The tutorial is structured as follows:
 
-### Checks:
-
-- __Sanity Check:__ Ensures that optimization routines meet a predefined criterion for convergence. It also checks that certain parameters (like Non-decision time and boundary separation) adhere to logical constraints.
-- __Predictive Check:__ Validates the model by using parameter estimates to generate simulated datasets. The simulated data should resemble key features of the empirical data.
-- __Parameter Recovery Study:__ After simulating data, the DDM is applied to see if the original parameters can be recovered.
-
 ### 2.1 Creating the Data
 - Simulated data is generated for two groups (A and B) for multiple participants.
 - Helper functions are defined to convert milliseconds to seconds and compute deleted trials.
@@ -92,8 +86,8 @@ This tutorial, titled "ADVANCED_Tutorial", provides a comprehensive guide on adv
 
 - Paired t-tests are conducted for beta (bias) and delta (drift rate) between group levels.
 
-### 2.8 Sanity Check:
+### 2.8 Sanity Checks:
 
-- Real data and modeled data for each participant are plotted to visually inspect the fit of the simple model.
-- Key features of the real and modeled data are compared.
-- A parameter recovery study is conducted to see if the original parameters can be recovered from the simulated data.
+- __Sanity Check:__ Ensure that optimization routines meet a predefined criterion for convergence. Check that certain parameters (like Non-decision time and boundary separation) adhere to logical constraints.
+- __Predictive Check:__ Validates the model by using parameter estimates to generate simulated datasets. The simulated data should resemble key features of the empirical data.
+- __Parameter Recovery Study:__ After simulating data, the DDM is applied to see if the original parameters can be recovered.

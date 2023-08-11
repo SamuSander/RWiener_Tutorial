@@ -11,7 +11,7 @@ editor_options:
 
 ```{r}
 # installs
-#install.packages("dplyr")
+#install.packages(c("RWiener", "tidyverse", "patchwork","jtools","gridExtra", "rempsyc", "effectsize"))
 
 # imports
 library(RWiener)
@@ -21,8 +21,6 @@ library(jtools)
 library(gridExtra)
 library(rempsyc)
 library(effectsize)
-library(lmerTest)
-library(broom.mixed)
 ```
 
 ------------------------------------------------------------------------
@@ -37,7 +35,7 @@ library(broom.mixed)
 
         -   For MLE methods, optimization routines also usually report
             whether a predefined criterion for convergence has been met
-            for each file --\>
+            for each file
         -   Non-decision time (Tau) can't be lower than the empirically
             observed behavioral Reaction Time (RT), and boundary
             separation (alpha) can't be less than 0.
@@ -67,7 +65,28 @@ library(broom.mixed)
 
 ## Creating the data
 
+-   **Data Generation**:
+
+    -   A seed is set for reproducibility, and synthetic data is
+        generated for 100 participants, where each participant has data
+        for two groups, "A" and "B", simulated using the **`rwiener`**
+        function with different parameters for each group. This data is
+        then merged into a single dataframe.
+
+-   **Data Preprocessing and Analysis**:
+
+    -   Helper functions are created to convert milliseconds to seconds
+        and compute the number of trials that fall within specified
+        reaction time bounds. The data is then processed to calculate
+        the number of deleted trials for two reaction time upper bounds
+        (2 seconds and 5 seconds) and the medians for both scenarios are
+        printed.
+    -   **Important**: Maximum Likelihood Methods of estimating DDM
+        parameters are very sensitive to outlier RTs (especially fast
+        RTs)
+
 ```{r}
+# --------------- Data Generation  ------------------
 # Set seed and initialize parameters
 set.seed(0)
 n_subs <- 100
@@ -115,7 +134,8 @@ compute_deleted_trials <- function(data, rt_low, rt_high) {
   return(trials_data)
 }
 
-# Analysis
+# --------------- Data Preprocessing  ---------------
+# RT Dropout
 all_data_2seconds_trials <- compute_deleted_trials(all_data, .150, 2.0)
 all_data_5seconds_trials <- compute_deleted_trials(all_data, .150, 5.0)
 
@@ -126,8 +146,14 @@ print(paste("Median deleted trials (5 seconds):", median(all_data_5seconds_trial
 
 ## RT-Distributions
 
+-   The data is preprocessed to filter reaction times between 0.150 and
+    5.0 seconds, then split into four distinct conditions based on
+    response type and group. Subsequently, density plots are created for
+    each condition, visualizing the distribution of reaction times with
+    APA-themed styling.
+
 ```{r}
-# Filter the data based on the reaction time window
+# Filter the data based on the reaction time window that you chose
 all_data <- all_data %>% filter(dat.q >= .150, dat.q <= 5.0)
 
 # Split the data into different conditions based on assumptions
@@ -176,7 +202,7 @@ ggplot(target_rewardB_df, aes(x=dat.q)) +
 
 ## Parameter estimation
 
-**LLE:** - Some researchers prefer to speak in terms of minimizing
+**LLE:** Some researchers prefer to speak in terms of minimizing
 negative LLE, rather than maximizing positive LLE, but the resulting
 parameter estimates will be the same.) - The higher (more positive), the
 better
@@ -196,18 +222,12 @@ strong evidence for the complex model
 of two models to some observed data. The test is based on the ratio of
 the likelihoods of the two models:
 
--   **P_LR_MyCompare** compares the log-likelihoods of two models
-    (complex and simple). The degree of freedom (df) for the chi-square
-    distribution is supplied as a parameter. This function calculates
-    the likelihood ratio (LR) and then uses the chi-square distribution
-    to calculate the p-value (P). This p-value is then returned.
-
 -   **P_LR_test** calculates the absolute value of the difference
     between two likelihood ratios LR1 and LR2, multiplies it by 2, and
     then calculates the p-value from the chi-square distribution with
     the specified degree of freedom. This p-value is then returned.
 
--   Both functions use the chi-square distribution to calculate the
+-   This function uses the chi-square distribution to calculate the
     p-value, which is a common practice when conducting likelihood ratio
     tests. The p-value indicates the probability of obtaining the
     observed data (or data more extreme) if the null hypothesis is true.
@@ -251,6 +271,25 @@ calculate_dfs <- function(wdm_cond, wdm_nocond) {
 
 ## DDM Fit
 
+-   **Data Preparation & Drift Diffusion Model (DDM) Fitting**: The
+    provided data is preprocessed, simplifying column names and recoding
+    specific columns. Then, for each unique participant, the Drift
+    Diffusion Model (DDM) is applied in two versions: a simple model
+    without conditions and a complex one considering rewards (A or B).
+    Both versions produce coefficients and other measures such as AIC
+    and BIC.
+
+-   **Results Aggregation**: Post DDM application, coefficients and
+    metrics (like AIC and BIC) from both models are stored in different
+    data structures. Additionally, Log-likelihood, deviance, and other
+    metrics are calculated and compared between the two models.
+
+-   **Dataframe Cleaning and Presentation**: Various metrics and results
+    are converted into data frames, renamed, and reformatted. Some
+    columns in the dataframes are converted to numeric type. Finally, a
+    summarized result of the processed data, along with the coefficients
+    and metrics from both DDM versions, is presented.
+
 ```{r}
 # --------------- Preprocess Data  ---------------
 prepare_data <- function(data) {
@@ -273,7 +312,7 @@ prepare_data <- function(data) {
 exp_data <- prepare_data(all_data)
 
 
-# --------------- DDM FIT  ----------------------------------------------------------------
+# --------------- DDM FIT  --------------------------------------------
 
 # Define variables that will be used during the fitting procedure
 Snum = 0
@@ -375,7 +414,7 @@ for (i in unique(exp_data$participant_id)) {
   
   print("-------------------->done!")
 }
-# -----------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 # --------------- Dataframe Cleaning ---------------
 
@@ -421,6 +460,20 @@ Exp_CompareMetrics
 ```
 
 ## Majority Vote for BIC, AIC and Likelihood Ratio Test
+
+-   **Model Comparison Metrics**: For each participant's data,
+    differences between the no-condition and conditioned models in terms
+    of BIC and AIC are calculated. Interpretations of BIC differences
+    are provided based on predefined ranges. A "vote" system is
+    introduced where a model is chosen (Complex or Simple) based on
+    whether its AIC or BIC is lower. Counting these votes helps in
+    determining the majority preference for a model.
+
+-   **Overall Model Preference**: The script combines BIC, AIC, and
+    Likelihood-Ratio Test (LRT) results to determine the overall
+    preferred model between complex and simple versions. Using majority
+    votes from each metric, the script prints out the model that fits
+    the data best according to each of these criteria.
 
 ```{r}
 ## Calculate Differences
@@ -498,7 +551,15 @@ cat(paste("\nBased on AIC, the overall preferred model is:", aic_overall))
 cat(paste("\nBased on LRT, the overall preferred model is:", LRT_P_overall))
 ```
 
-# Plot the data
+## Plot the data
+
+-   **Parameter Visualization**: The script reshapes the
+    **`Exp_Results_ALL`** dataset into a long format, separating
+    parameters based on rewards. It then produces a combined violin and
+    jitter plot to visualize the distribution and individual data points
+    of 'beta' and 'delta' parameters for each reward type. This plot
+    helps in understanding how these parameters vary across different
+    rewards.
 
 ```{r}
 # Reshape the data to a long format
@@ -522,11 +583,11 @@ ggplot(Exp_Results_ALL_long, aes(x = reward, y = value, fill = parameter_type)) 
 
 ## Statistics for the group levels
 
--   paired t-test for beta (bias) between group levels
--   paired t-test for the delta (drift rate) between group levels
+-   Paired t-test for beta (bias) between group levels
+-   Paired t-test for the delta (drift rate) between group levels
 
 ```{r}
-# t-test between group levels
+# T-test between group levels
 
 # Beta
 t.test(
@@ -563,11 +624,31 @@ cohens_d(
 
 ## Plot real data and modeled data for each participant: SIMPLE MODEL
 
+-   **Modeled Data Generation**: The script begins by initializing an
+    empty list to store modeled data. It then loops over each
+    participant to extract specific parameters and generate modeled data
+    using the **`rwiener`** function based on these parameters. This
+    modeled data, along with real data from the experiment, is merged
+    and organized, including the creation of a group variable indicating
+    whether the data is modeled or real.
+
+-   **Data Visualization**: The script provides two visualization
+    functions. The **`create_density_plots`** function generates density
+    plots for both upper (targets) and lower (lures) responses,
+    comparing the distribution of response times between real and
+    modeled data for each participant. The **`create_bar_plots`**
+    function creates bar plots showing the count of each response type
+    (upper or lower) for both real and modeled data for each
+    participant. Both sets of plots are color-coded to distinguish
+    between real and modeled data.
+
 ```{r}
-### Initialize an empty list to store the modeled data for each subject
+# --------------- Modeled Data Generation  ----------
+
+# Initialize an empty list to store the modeled data for each subject
 modeled_data_list <- list()
 
-### For loop to iterate through each subject
+# For loop to iterate through each subject
 for (i in 1:nrow(Exp_Results_ALL_nocond)) {
   # Extract parameters for the each subject
   params <- as.numeric(Exp_Results_ALL_nocond[i, -1])
@@ -585,7 +666,7 @@ for (i in 1:nrow(Exp_Results_ALL_nocond)) {
   modeled_data_list[[i]] <- modeled_df
 }
 
-### Combine the dataframes in the list into a single dataframe
+# Combine the dataframes in the list into a single dataframe
 modeled_data <- do.call(rbind, modeled_data_list)
 
 # Create a group variable and merge them
@@ -600,6 +681,9 @@ colnames(modeled_data) <- c("participant_id", "rt", "response", "group")
 
 # Combine the data frames
 total <- rbind(modeled_data, real_data)
+
+
+# --------------- Data Visualization ----------------
 
 create_density_plots <- function(total) {
   
@@ -675,9 +759,21 @@ plots <- create_density_plots(total)
 plots <- create_bar_plots(total)
 ```
 
-## Sanity Check 2
+### Comparison of key features
 
-### Key features
+-   **Metrics Calculation**: The provided code contains a function
+    **`calculate_metrics`** that computes several metrics for individual
+    participants based on their responses---specifically, counts of
+    'upper' and 'lower' responses, mean response time, standard
+    deviation of the response time, and the median response time. This
+    function is then applied separately to real and modeled data to
+    generate metrics for each dataset.
+
+-   **Data Comparison & Correlation**: After computing the metrics, the
+    script compares the metrics from the real data to those from the
+    modeled data. It then calculates and prints Pearson correlations for
+    each metric between the real and modeled data to assess how closely
+    the modeled data mimics the real data in these aspects.
 
 ```{r}
 # Calculate metrics
@@ -737,7 +833,7 @@ cat("Correlation for median_rt:", median_rt_corr, "\n")
 cat("Correlation for sd_rt:", sd_rt_corr, "\n")
 ```
 
-## Parameter recovery study
+### Parameter recovery study
 
 -   After generating the simulated data, a parameter recovery study can
     be conducted, in which the DDM is applied to the simulated data, to

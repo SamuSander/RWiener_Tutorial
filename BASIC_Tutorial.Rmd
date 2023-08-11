@@ -9,16 +9,12 @@ editor_options:
     wrap: 72
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-options(error = quote({dump.frames(to.file=TRUE); q()}))
-```
+## Information
 
-# Information
+![Drift Diffusion Model.](ddm.jpeg)
 
-![an image caption Source: DDM.](DDM.png)
+#### Functions:
 
--   Functions:
     -   `dwiener`: density function to compute the probability density
         function (PDF) at a given quantile at a given parameter set
     -   `pwiener`: probability function to compute the cumulative
@@ -29,7 +25,10 @@ options(error = quote({dump.frames(to.file=TRUE); q()}))
         samples for a given parameter set
     -   `nlm` or `optim`: to estimate the model parameters for an
         observed data set
--   Use of the typical diffusion model with 4 parameters:
+        
+
+#### Use of the typical diffusion model with 4 parameters:
+
     -   α (boundary separation): Speed-accuracy trade-off (high α means
         high accuracy)
     -   𝜏 (non-decision time): Motor response time, encoding time (high
@@ -38,17 +37,19 @@ options(error = quote({dump.frames(to.file=TRUE); q()}))
         towards response 'A')
     -   δ (drift rate parameter): Quality of the stimulus (close to 0
         means ambiguous stimulus)
--   Key information on the Maximum likelihood estimation method using
-    rWiener
-    -   computational tractability = moderate
-    -   sample size required = Can be used with as few as about 40--50
+        
+
+#### Key information on the Maximum likelihood estimation method using RWiener
+
+    -   Computational tractability = moderate
+    -   Sample size required = Can be used with as few as about 40-50
         trials per subject, at least 10 trials per condition
-    -   outlier RTs = Very sensitive to outlier RTs (especially fast
+    -   Outlier RTs = Very sensitive to outlier RTs (especially fast
         RTs)
 
 ```{r}
 # installs
-#install.packages("dplyr")
+#install.packages(c("RWiener", "tidyverse", "jtools", "gridExtra", "rempsyc", "rempsyc", "effectsize"))
 
 # imports
 library(RWiener)
@@ -64,32 +65,28 @@ library(effectsize)
 
 Parameters:
 
-\- n = 100 observations
-
-\- alpha = boundary seperation
-
-\- tau = non-decision time
-
-\- beta = bias
-
-\- delta = drift rate
-
-\- The created dat object is a dataframe with 100 observations and two
-variables: dat$q contains the RTs, whereas dat$resp contains a factor to
-indicate the response made (upper vs. lower)
+-   n = 100 observations
+-   alpha = boundary seperation
+-   tau = non-decision time
+-   beta = bias
+-   delta = drift rate
+-   The created `dat` object is a dataframe with n observations and two
+    variables: `dat$q` contains the RTs, whereas `dat$resp` contains a
+    factor to indicate the response made (upper vs. lower)
 
 ```{r}
-# set the seed and generat data
+# Set the seed and generate data
 set.seed(0)
-n_subs = 32
-dat <- rwiener(n=n_subs, alpha=2, tau=.3, beta=.5, delta=.5)
+
+# Define the number of subje
+n_obs = 100
+dat <- rwiener(n=n_obs, alpha=2, tau=.3, beta=.5, delta=.5)
 head(dat)
 ```
 
-### d-Wiener-function
+### `d-Wiener` function
 
--   to get the density of a specific quantile
--   The function takes seven arguments, the first argument is the RT at
+-   This function takes seven arguments, the first argument is the RT at
     which the density shall be evaluated, the next four arguments are
     the model parameters α, τ, β, and δ.
 -   resp takes any of three valid values: upper, lower, or both, meaning
@@ -119,7 +116,7 @@ curve(dwiener(x, 2, .3, .5, .5, rep("lower", length(x))), add=TRUE, col="red")
 legend("topright", legend=c("Upper", "Lower"), col=c("blue", "red"), lty=1)
 ```
 
-### p-Wiener function
+### `p-Wiener` function
 
 -   To calculate the cumulative distribution, we can use the CDF
     function pwiener as follows
@@ -144,11 +141,11 @@ legend("topright", legend=c("Upper", "Lower"), col=c("blue", "red"), lty=1)
 
 ```
 
-### q-Wiener function
+### `q-Wiener` function
 
 -   We can also find the appropriate quantile for a given probability
     via the inverse CDF function
--   the first argument needs to be a probability, indicating the
+-   Te first argument needs to be a probability, indicating the
     CDF-value to be looked up.
 
 ```{r}
@@ -158,7 +155,8 @@ qwiener(p=.2, alpha=2, tau=.3, beta=.5, delta=.5, resp="lower")
 
 ### Plot-function
 
--   this draws the observed lower and upper responses
+-   This function `wiener_plot()` draws the observed lower and upper
+    responses
 
 ```{r}
 wiener_plot(dat)
@@ -168,9 +166,9 @@ wiener_plot(dat)
 
 # Model fitting
 
--   2 different alogorithms --\> but they estimate similiar parameters
+-   2 different algorithms --\>They estimate similar parameters
 
--   c(1, 0.1, 0.1, 1) --\> starting point from the
+-   c(1, 0.1, 0.1, 1) --\> Starting point
 
 ```{r}
 # using optim, first with Nelder-Mead algorithm, then with BFGS
@@ -178,11 +176,11 @@ optim1 <- optim(c(1, .1, .1, 1), wiener_deviance, dat=dat, method="Nelder-Mead")
 est <- optim(optim1[["par"]], wiener_deviance, dat=dat, method="BFGS", hessian=TRUE)
 
 #Extract the parameters
-  # [alpha, tau, beta, delta]
+# [alpha, tau, beta, delta]
 est$par
 
 # using nlm, which uses a Newton-type algorithm
-nlm1 <- nlm(p=c(1, 0.1, 0.1, 1), f=wiener_deviance, dat=dat)
+nlm1 <- nlm(p=c(1, .1, .1, 1), f=wiener_deviance, dat=dat)
 
 # Extract the parameters
 nlm1$estimate
@@ -191,7 +189,7 @@ nlm1$estimate
 -   Estimation of DDM-Params using Nelder-Mead or Newton-type algorithms
     are very similiar
 
-## Compare model vs. real data
+### Compare model vs. real data 1
 
 ```{r}
 set.seed(43)
@@ -223,6 +221,8 @@ lower_density <- ggplot(df_comparison %>% filter(value.resp == "lower"), aes(x =
 
 upper_density/lower_density
 ```
+
+### Compare model vs. real data 2
 
 ```{r}
 # Line Diagrams
@@ -271,14 +271,14 @@ accuracy
 df_comparison
 ```
 
-## Correlation of RT and Accuracy
+### Correlation of Reaction Times
 
 ```{r}
 # Correlation of RTs
 cor(df_real$value.q, df_model$value.q, method = "pearson")
 ```
 
-# Criteria
+### Criteria
 
 -   wiener_likelihood(x=x, dat=dat)
 
@@ -308,12 +308,6 @@ cor(df_real$value.q, df_model$value.q, method = "pearson")
     wiener_bic(x=est$par, dat=dat)
     ```
 
-### Estimating parameters for multiple conditions
-
-```{r}
-# Add Parameter estimation for multiple conditions here
-```
-
 ------------------------------------------------------------------------
 
 # Full Analysis Pipeline
@@ -321,6 +315,24 @@ cor(df_real$value.q, df_model$value.q, method = "pearson")
 ------------------------------------------------------------------------
 
 ## Pipeline Part 1: Parameter Estimation for each participant
+
+-   **Data Generation**:
+
+    -   Initializing settings and generating individual subject data
+        using the **`rwiener`** function, then aggregating all into a
+        single dataframe.
+
+-   **Parameter Estimation**:
+
+    -   Defining a function (**`estimate_parameters`**) to estimate data
+        parameters using optimization methods, and then applying this
+        function to each subject's data.
+
+-   **Results Compilation**:
+
+    -   Aggregating individual parameter estimates into a dataframe and
+        computing the mean across all subjects, followed by displaying
+        the results.
 
 ```{r}
 # 1. Load in the data
@@ -340,17 +352,9 @@ for (i_sub in 1:n_subs) {
 
 all_data <- do.call(rbind, all_data)
 
-# 3. Outlier correction
-## 3.1 RT < 100 or 200ms and RT > 1 or 1.5s;
-## maybe choose 200 ms and 1500 ms, since people use the mouse and not the keyboard
-#clean_data <- all_data[all_data$q >= .150 & all_data$q <= 2.0, ]
 
-## 3.2 Other outlier correction methods
-## Alternate methods for reducing the effect of outliers, such as transforming the data to normalize the data, or using cutoffs based on standard deviation or interquartile range,
-
-
-# 4. Parameter estimation
-# 4.1 Parameter estimation function
+# 1.2. Parameter estimation
+# Parameter estimation function
 estimate_parameters <- function(data) {
   # Remove the 'subject' column
   data <- data[, -which(names(data) %in% "subject")]
@@ -365,13 +369,13 @@ estimate_parameters <- function(data) {
   #nlm1$estimate
 }
 
-# 4.2 Calculate the parameters for each subject and store them in a list
+# Calculate the parameters for each subject and store them in a list
 params_list <- lapply(split(all_data, all_data$subject), estimate_parameters)
 
-# 4.3 Convert the list to a data frame
+# Convert the list to a data frame
 params_df <- do.call(rbind, params_list)
 
-# 4.4 Calculate the mean across subjects
+# Calculate the mean across subjects
 mean_params <- colMeans(params_df)
 
 # Show params_df and mean params
@@ -381,14 +385,14 @@ cat("the Mean parameters are: ", mean_params,"\n",sep="\t")
 
 ## Pipeline 2: Get Estimation parameters
 
--   wiener_likelihood: The probability of the observed data under the
-    current parameters of the Wiener model.
--   wiener_deviance: A measure of the discrepancy between observed data
-    and predictions made by the Wiener model.
--   wiener_aic: A score that balances model fit and complexity, used to
-    compare different Wiener models.
--   wiener_bic: Similar to AIC, but places a heavier penalty on model
-    complexity.
+-   **Wiener Likelihood:** The probability of the observed data under
+    the current parameters of the Wiener model.
+-   **Wiener Deviance:** A measure of the discrepancy between observed
+    data and predictions made by the Wiener model.
+-   **Wiener AIC:** A score that balances model fit and complexity, used
+    to compare different Wiener models.
+-   **Wiener BIC:** Similar to AIC, but places a heavier penalty on
+    model complexity.
 
 ```{r}
 # Function to create plots for each subject
@@ -442,8 +446,20 @@ nice_table(estimation_df)
 
 ## Pipeline Part 3: Generate modeled data
 
+-   **Data Modeling**:
+
+    -   Using parameters from **`params_df`**, modeled data for each
+        subject is generated with the **`rwiener`** function and stored
+        in individual dataframes.
+
+-   **Data Aggregation**:
+
+    -   All individual dataframes of modeled data are combined into one
+        unified dataframe called **`modeled_data`**, and the first few
+        rows are displayed using the **`head`** function.
+
 ```{r}
-# 5. Generate modeled data
+# Generate modeled data
 ### Initialize an empty list to store the modeled data for each subject
 modeled_data_list <- list()
 
@@ -471,6 +487,21 @@ head(modeled_data)
 ```
 
 ## Pipeline 4: Compare modeled and real data
+
+-   **Model Data Creation**:
+
+    -   Modeled data is generated for each of the 100 subjects using
+        mean parameters and the **`rwiener`** function, then labeled as
+        "Model", and combined with the real data labeled as "Real" into
+        a single dataframe called **`total`**.
+
+-   **Visualization**:
+
+    -   A function **`create_density_plots`** is defined to create
+        density plots comparing reaction times (RT) of real and modeled
+        data for each subject's upper and lower responses. The plots are
+        generated using the **`ggplot2`** package with distinct colors
+        for real and model data, and stored in a list named **`plots`**.
 
 ```{r}
 ## Compare model vs. real data
@@ -542,10 +573,14 @@ create_density_plots <- function(total) {
 
 # Use the function
 plots <- create_density_plots(total)
-
 ```
 
 ## Mean Parameters of Model vs Real Data
+
+-   Using the **`ggplot2`** package, two density plots are created to
+    compare reaction times (RT) of real vs. modeled data for both upper
+    and lower responses, each distinctly colored and themed with APA
+    styling.
 
 ```{r}
 # For upper responses
